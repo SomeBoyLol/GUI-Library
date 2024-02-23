@@ -8,12 +8,19 @@ local widget = {}
 setmetatable(widget, gui)
 widget.__index = widget
 function widget:update(dt)
+    self.stencil = function()
+        love.graphics.rectangle("fill", self.parent.screenX, self.parent.screenY, self.parent.width, self.parent.height)
+    end
+
     self:specializedUpdate(dt)
     self:bodyUpdate(dt)
     self:textUpdate(dt)
     self:childrenUpdate(dt)
 end
 function widget:draw()
+    love.graphics.stencil(self.stencil, "replace", 1)
+    love.graphics.setStencilTest("greater", 0)
+
     self:bodyDraw()
     self:textDraw()
     self:childrenDraw()
@@ -26,7 +33,9 @@ function widget:mousepressed(x, y, button)
 
     local function checkClick(element)
         if element.class == "button" and element.hover then
-            element.func()
+            element:func()
+        elseif element.class == "input" then
+            element.edit = element.hover
         end
 
         for i, element in pairs(element.children) do
@@ -35,6 +44,46 @@ function widget:mousepressed(x, y, button)
     end
 
     checkClick(self)
+end
+
+function widget:textinput(t)
+    local function checkEdit(element)
+        if element.class == "input" and element.edit then
+            element.text = element.text..t
+
+            return
+        end
+
+        for i, element in pairs(element.children) do
+            checkEdit(element)
+        end
+    end
+
+    checkEdit(self)
+end
+
+function widget:keypressed(key)
+    if not(key == "return" or key == "backspace") then
+        return
+    end
+
+    local function checkEdit(element)
+        if element.class == "input" and element.edit then
+            if key == "return" then
+                element.edit = false
+            elseif key == "backspace" then
+                element.text = string.sub(element.text, 1, -2)
+            end
+
+            return
+        end
+
+        for i, element in pairs(element.children) do
+            checkEdit(element)
+        end
+    end
+
+    checkEdit(self)
 end
 
 function widget:bodyUpdate(dt)
@@ -62,13 +111,15 @@ function widget:bodyDraw()
 end
 
 function widget:textUpdate(dt)
-    self.textWidth, self.textWrapped = self.font:getWrap(self.text, self.width)
+    self.textWidth, self.textWrapped = self.font:getWrap(self.text, self.width - self.textMargin * 2)
+
+    self.textX = self.screenX + self.textMargin
     if self.textAlignmentY == "top" then
-        self.textY = self.screenY
+        self.textY = self.screenY + self.textMargin
     elseif self.textAlignmentY == "center" then
         self.textY = self.screenY + self.height / 2 - (#self.textWrapped * self.font:getHeight(self.text) / 2)
     else
-        self.textY = self.screenY + self.height - (#self.textWrapped * self.font:getHeight(self.text))
+        self.textY = self.screenY + self.height - (#self.textWrapped * self.font:getHeight(self.text)) - self.textMargin
     end
 end
 function widget:textDraw()
@@ -76,7 +127,7 @@ function widget:textDraw()
     love.graphics.setFont(self.font)
     for i, text in ipairs(self.textWrapped) do
         i = i - 1
-        love.graphics.printf(text, self.screenX, self.textY + i * self.font:getHeight(self.text), self.width, self.textAlignmentX)
+        love.graphics.printf(text, self.textX, self.textY + i * self.font:getHeight(self.text), self.width - self.textMargin * 2, self.textAlignmentX)
     end
 end
 
@@ -119,9 +170,10 @@ function window:update(dt)
 end
 
 function window:draw()
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("line", self.screenX, self.screenY, self.width, self.height)
+    love.graphics.push()
     self:childrenDraw()
+    love.graphics.pop()
+    love.graphics.setStencilTest()
 end
 
 --Button Metatable--
@@ -152,13 +204,66 @@ setmetatable(image, widget)
 image.__index = image
 
 function image:update(dt)
+    self.stencil = function()
+        love.graphics.rectangle("fill", self.parent.screenX, self.parent.screenY, self.parent.width, self.parent.height)
+    end
+
     self.width = self.source:getWidth() * self.scale
     self.height = self.source:getHeight() * self.scale
     self:bodyUpdate(dt)
 end
 
 function image:draw()
+    love.graphics.stencil(self.stencil, "replace", 1)
+    love.graphics.setStencilTest("greater", 0)
     love.graphics.draw(self.source, self.screenX, self.screenY, nil, self.scale)
+end
+
+--Input Metatable--
+local input = {}
+setmetatable(input, widget)
+input.__index = input
+
+function input:draw()
+    love.graphics.stencil(self.stencil, "replace", 1)
+    love.graphics.setStencilTest("greater", 0)
+
+    self:bodyDraw()
+    self:textDraw()
+    self:textCursorDraw()
+    self:childrenDraw()
+end
+
+function input:specializedUpdate(dt)
+    local mx, my = love.mouse:getPosition()
+    self.hover = mx > self.screenX and mx < self.screenX + self.width and my > self.screenY and my < self.screenY + self.height
+
+    if self.edit then
+        self.color = self.editColor
+        self.textCursorVisibility = 1
+    else
+        self.color = self.normalColor
+        self.textCursorVisibility = 0
+    end
+
+    self.stencil = function()
+        love.graphics.rectangle("fill", self.screenX, self.screenY, self.width, self.height)
+    end
+
+    if self.textAlignmentX == "left" then
+        self.textCursorX = self.textX + self.font:getWidth(self.textWrapped[#self.textWrapped])
+    elseif self.textAlignmentX == "center" then
+        self.textCursorX = self.screenX + self.width/2 + self.font:getWidth(self.textWrapped[#self.textWrapped])/2
+    else
+        self.textCursorX = self.screenX + self.width - self.textMargin
+    end
+
+    self.textCursorY = self.textY + (#self.textWrapped - 1) * self.font:getHeight(self.text)
+end
+
+function input:textCursorDraw()
+    love.graphics.setColor(1, 1, 1, self.textCursorVisibility)
+    love.graphics.rectangle("fill", self.textCursorX, self.textCursorY, 2, self.font:getHeight(self.text))
 end
 
 --Gui code--
@@ -179,7 +284,9 @@ function gui:create(class, settings)
         element.screenY = 0
         element.width = love.graphics:getWidth()
         element.height = love.graphics:getHeight()
-    elseif class == "button" or class == "frame" then
+    elseif class == "button" or class == "frame" or class == "input" then
+    
+        element.color = settings.color or {1, 0, 0}
 
         element.x = settings.x or 0
         element.y = settings.y or 0
@@ -187,7 +294,6 @@ function gui:create(class, settings)
         element.screenY = element.y
         element.width = settings.width or 100
         element.height = settings.height or 50
-        element.color = settings.color or {1, 0, 0}
 
         element.alignmentX = settings.alignmentX or "left"
         element.alignmentY = settings.alignmentY or "top"
@@ -198,6 +304,7 @@ function gui:create(class, settings)
         element.textColor = settings.textColor or {1, 1, 1}
         element.textX = element.x
         element.textY = element.y
+        element.textMargin = element.textMargin or settings.textMargin
         element.textWidth = 0
         element.textAlignmentX = settings.textAlignmentX or "center"
         element.textAlignmentY = settings.textAlignmentY or "center"
@@ -209,6 +316,17 @@ function gui:create(class, settings)
             element.hover = false
             element.normalColor = element.color
             element.hoverColor = settings.hoverColor or {1, 1, 0}
+        elseif class == "input" then
+            setmetatable(element, input)
+
+            element.edit = false
+            element.hover = false
+            element.normalColor = element.color
+            element.editColor = settings.editColor or {0.7, 0, 0}
+
+            element.textCursorX = 0
+            element.textCursorY = 0
+            element.textCursorVisibility = 0
         else
             setmetatable(element, frame)
         end
@@ -233,7 +351,6 @@ end
 
 function gui:style(styles)
     gui.stylesheet = {}
-    gui.stylesheet.__index = gui.stylesheet
 
     for i, style in pairs(styles) do
         for key, value in pairs(style) do
@@ -242,6 +359,8 @@ function gui:style(styles)
             end
         end
     end
+
+    gui.stylesheet.__index = gui.stylesheet
 end
 
 return gui
