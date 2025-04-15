@@ -15,6 +15,7 @@ function widget:update(dt)
     self:specializedUpdate(dt)
     self:bodyUpdate(dt)
     self:textUpdate(dt)
+    self.customUpdate(dt, self)
     self:childrenUpdate(dt)
 end
 function widget:draw()
@@ -24,6 +25,13 @@ function widget:draw()
     self:bodyDraw()
     self:textDraw()
     self:childrenDraw()
+    self:customDraw()
+end
+
+function widget:customUpdate(dt, self)
+end
+
+function widget:customDraw(self)
 end
 
 function widget:mousepressed(x, y, button)
@@ -35,7 +43,15 @@ function widget:mousepressed(x, y, button)
         if element.class == "button" and element.hover then
             element:func()
         elseif element.class == "input" then
-            element.edit = element.hover
+            if element.hover then
+                element.edit = true
+            else
+                if element.edit then
+                    element:func()
+                end
+
+                element.edit = false
+            end
         end
 
         for i, element in pairs(element.children) do
@@ -71,6 +87,7 @@ function widget:keypressed(key)
         if element.class == "input" and element.edit then
             if key == "return" then
                 element.edit = false
+                element:func()
             elseif key == "backspace" then
                 element.text = string.sub(element.text, 1, -2)
             end
@@ -170,6 +187,8 @@ function window:update(dt)
 end
 
 function window:draw()
+    love.graphics.setColor(self.color)
+    love.graphics.rectangle("fill", self.screenX, self.screenY, self.width, self.height)
     love.graphics.push()
     self:childrenDraw()
     love.graphics.pop()
@@ -182,7 +201,7 @@ setmetatable(button, widget)
 button.__index = button
 
 function button:specializedUpdate(dt)
-    local mx, my = love.mouse:getPosition()
+    local mx, my = core:getMousePosition()
 
     self.hover = mx > self.screenX and mx < self.screenX + self.width and my > self.screenY and my < self.screenY + self.height
 
@@ -211,9 +230,11 @@ function image:update(dt)
     self.width = self.source:getWidth() * self.scale
     self.height = self.source:getHeight() * self.scale
     self:bodyUpdate(dt)
+    self.customUpdate(dt, self)
 end
 
 function image:draw()
+    love.graphics.setColor(1, 1, 1, 1)
     love.graphics.stencil(self.stencil, "replace", 1)
     love.graphics.setStencilTest("greater", 0)
     love.graphics.draw(self.source, self.screenX, self.screenY, nil, self.scale)
@@ -235,7 +256,7 @@ function input:draw()
 end
 
 function input:specializedUpdate(dt)
-    local mx, my = love.mouse:getPosition()
+    local mx, my = core:getMousePosition()
     self.hover = mx > self.screenX and mx < self.screenX + self.width and my > self.screenY and my < self.screenY + self.height
 
     if self.edit then
@@ -275,15 +296,19 @@ function gui:create(class, settings)
     element.class = class
     element.children = {}
     element.parent = {}
-    element.name = settings.name or "thing"
+    element.name = settings.name or "element"
+
+    element.customUpdate = settings.customUpdate
+    element.customDraw = settings.customDraw
 
     if class == "window" then
         setmetatable(element, window)
 
         element.screenX = 0
         element.screenY = 0
-        element.width = love.graphics:getWidth()
-        element.height = love.graphics:getHeight()
+        element.width = core.width
+        element.height = core.height
+        element.color = settings.color or {0, 0, 0, 0}
     elseif class == "button" or class == "frame" or class == "input" then
     
         element.color = settings.color or {1, 0, 0}
@@ -298,13 +323,20 @@ function gui:create(class, settings)
         element.alignmentX = settings.alignmentX or "left"
         element.alignmentY = settings.alignmentY or "top"
 
-        element.font = settings.font or love.graphics.setNewFont(12)
+        if type(settings.font) == "number" then
+            element.font = love.graphics.newFont(settings.font)
+        elseif settings.font == nil then
+            element.font = love.graphics.newFont(12)
+        else
+            element.font = settings.font
+        end
+    
         element.text = settings.text or class
         element.textWrapped = {element.text}
         element.textColor = settings.textColor or {1, 1, 1}
-        element.textX = element.x
-        element.textY = element.y
-        element.textMargin = element.textMargin or settings.textMargin
+        element.textX = element.textX or 0
+        element.textY = element.textY or 0
+        element.textMargin = settings.textMargin or 0
         element.textWidth = 0
         element.textAlignmentX = settings.textAlignmentX or "center"
         element.textAlignmentY = settings.textAlignmentY or "center"
@@ -319,6 +351,7 @@ function gui:create(class, settings)
         elseif class == "input" then
             setmetatable(element, input)
 
+            element.func = settings.func or function() end
             element.edit = false
             element.hover = false
             element.normalColor = element.color
@@ -339,8 +372,8 @@ function gui:create(class, settings)
         element.screenY = element.y
         element.source = settings.source
         element.scale = settings.scale or 1
-        element.width = element.source:getWidth()
-        element.height = element.source:getHeight()
+        element.width = element.source:getWidth() or 0
+        element.height = element.source:getHeight() or 0
 
         element.alignmentX = settings.alignmentX or "center"
         element.alignmentY = settings.alignmentY or "center"
