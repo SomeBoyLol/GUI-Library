@@ -435,7 +435,7 @@ function gui:create(class, settings)
             element.normalColor = element.color
             element.hoverColor = settings.hoverColor or {1, 1, 0}
             element.borderNormalColor = element.borderColor
-            element.borderHoverColor = element.borderHoverColor or element.borderColor
+            element.borderHoverColor = settings.borderHoverColor or element.borderColor
         elseif class == "input" then
             setmetatable(element, input)
 
