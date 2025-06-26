@@ -313,15 +313,20 @@ function text:update(dt)
         love.graphics.rectangle("fill", self.parent.screenX, self.parent.screenY, self.parent.width, self.parent.height, self.parent.radiusX, self.parent.radiusY)
     end
 
+    self.screenX = self.parent.screenX + self.x
+    self.screenY = self.parent.screenY + self.y
+
     self:bodyUpdate(dt)
     self.customUpdate(dt, self)
 end
 
 function text:draw()
-    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setColor(self.color)
+    love.graphics.setFont(self.font)
     love.graphics.stencil(self.stencil, "replace", 1)
     love.graphics.setStencilTest("greater", 0)
-    love.graphics.print(text)
+
+    love.graphics.print(self.text, self.screenX, self.screenY)
 end
 
 --Input Metatable--
@@ -468,6 +473,24 @@ function gui:create(class, settings)
         element.alignmentX = settings.alignmentX or "center"
         element.alignmentY = settings.alignmentY or "center"
     elseif class == "text" then
+        setmetatable(element, text)
+        
+        if type(settings.font) == "number" then
+            element.font = love.graphics.newFont(settings.font)
+        elseif settings.font == nil then
+            element.font = love.graphics.newFont(12)
+        else
+            element.font = settings.font
+        end
+
+        element.text = settings.text or ""
+        element.x = settings.x or 0
+        element.y = settings.y or 0
+        element.color = settings.color or {1, 1, 1, 1}
+        element.screenX = 0
+        element.screenY = 0
+        element.alignmentX = settings.alignmentX or "left"
+        element.alignmentY = settings.alignmentY or "top"
     end
 
     return element
